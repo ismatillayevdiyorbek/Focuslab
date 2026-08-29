@@ -1030,7 +1030,7 @@ button:focus-visible{outline:2px solid rgba(26,204,140,.5);outline-offset:2px}
         <div class="oylik-title">Shu oydagi planlar</div>
         <div style="display:flex;align-items:center;gap:10px">
           <div class="oylik-month" id="oylik-month"></div>
-          <div class="gm-add-btn" onclick="addHisobotCat()" title="Yillik hisobot bo'limlaridan qo'shish" style="width:32px;height:32px;font-size:17px">+</div>
+          <div class="gm-add-btn" onclick="openOylikBolimPicker()" title="Bo'limlardan oylik maqsad qo'shish" style="width:32px;height:32px;font-size:17px">+</div>
         </div>
       </div>
       <div class="oylik-grid">
@@ -1861,7 +1861,9 @@ function deleteSection(secId){
   SECS.splice(idx,1);
   const hIdx=HISOB_CATS.findIndex(h=>h._secId===secId);
   if(hIdx!==-1)HISOB_CATS.splice(hIdx,1);
-  refreshDay();renderOsish();saveState();
+  // Shu bo'limga bog'langan "Shu oydagi planlar" kartasi bo'lsa, uni ham o'chiramiz
+  OY.customGoals=OY.customGoals.filter(g=>g._secId!==secId&&g.name!==label);
+  refreshDay();renderOsish();renderOylikCards();saveState();
 }
 function deleteSecItem(secId,i){
   const sec=SECS.find(s=>s.id===secId);if(!sec)return;
@@ -2008,22 +2010,36 @@ function submitNewSec(){
 }
 
 const PROTECT_CODE='87158513';
+let _askCodeCallback=null;
 function askCode(onOk){
+  _askCodeCallback=onOk;
   const ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center';
   ov.innerHTML=`
-    <div style="position:absolute;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(10px)" onclick="this.parentElement.remove()"></div>
+    <div style="position:absolute;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(10px)" onclick="this.parentElement.remove();_askCodeCallback=null"></div>
     <div style="position:relative;z-index:1;background:rgba(6,14,10,.97);border:1px solid rgba(220,60,60,.3);border-radius:20px;padding:28px 32px;width:340px;animation:glassOpen .25s ease;box-shadow:0 0 40px rgba(140,0,0,.3)">
       <div style="font-size:16px;font-weight:800;color:#ff8080;margin-bottom:6px">🔒 Kod talab qilinadi</div>
       <div style="font-size:12px;color:rgba(200,160,160,.6);margin-bottom:20px">Eslatma: <span style="color:rgba(200,240,220,.5);font-style:italic">old is gold</span></div>
-      <input id="_code_inp" type="password" placeholder="Kodni kiriting..." style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(220,60,60,.2);color:#fff;padding:12px 16px;border-radius:12px;font-size:16px;text-align:center;letter-spacing:4px;outline:none;font-family:Inter,sans-serif" onkeydown="if(event.key==='Enter'){const v=this.value;if(v==='${PROTECT_CODE}'){this.closest('div[style*=fixed]').remove();(${onOk.toString()})();}else{this.style.borderColor='#e85555';this.value='';this.placeholder='Noto\'g\'ri kod!'}}">
+      <input id="_code_inp" type="password" placeholder="Kodni kiriting..." style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(220,60,60,.2);color:#fff;padding:12px 16px;border-radius:12px;font-size:16px;text-align:center;letter-spacing:4px;outline:none;font-family:Inter,sans-serif" onkeydown="if(event.key==='Enter')_submitAskCode(this)">
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-        <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:9px 16px;font-size:13px;color:var(--muted);border-radius:9px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);cursor:pointer">Bekor</button>
-        <button onclick="const v=document.getElementById('_code_inp').value;if(v==='${PROTECT_CODE}'){this.closest('div[style*=fixed]').remove();(${onOk.toString()})();}else{document.getElementById('_code_inp').style.borderColor='#e85555';document.getElementById('_code_inp').value='';document.getElementById('_code_inp').placeholder='Noto\\'g\\'ri kod!'}" style="padding:9px 22px;font-size:13px;font-weight:700;color:#fff;border-radius:9px;background:linear-gradient(135deg,rgba(200,30,30,.7),rgba(140,0,0,.6));border:1px solid rgba(220,60,60,.4);cursor:pointer">Tasdiqlash</button>
+        <button onclick="this.closest('div[style*=fixed]').remove();_askCodeCallback=null" style="padding:9px 16px;font-size:13px;color:var(--muted);border-radius:9px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);cursor:pointer">Bekor</button>
+        <button onclick="_submitAskCode(document.getElementById('_code_inp'))" style="padding:9px 22px;font-size:13px;font-weight:700;color:#fff;border-radius:9px;background:linear-gradient(135deg,rgba(200,30,30,.7),rgba(140,0,0,.6));border:1px solid rgba(220,60,60,.4);cursor:pointer">Tasdiqlash</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
   setTimeout(()=>document.getElementById('_code_inp')?.focus(),80);
+}
+function _submitAskCode(inputEl){
+  const v=inputEl.value;
+  if(v===PROTECT_CODE){
+    inputEl.closest('div[style*=fixed]').remove();
+    const cb=_askCodeCallback;_askCodeCallback=null;
+    if(cb)cb();
+  } else {
+    inputEl.style.borderColor='#e85555';
+    inputEl.value='';
+    inputEl.placeholder="Noto'g'ri kod!";
+  }
 }
 
 function openHisobot(type){
@@ -2085,6 +2101,49 @@ function deleteHisobCat(idx){
 function closeHisobot(){document.getElementById('hisobot-modal').classList.remove('open')}
 
 function addHisobotCat(){openHisobotPicker();}
+
+/* "Shu oydagi planlar" bo'limiga faqat mavjud bo'limlardan (BO'LIMLAR
+   panelida turgan) oylik maqsad qo'shish uchun picker. Shu bo'lim
+   BO'LIMLAR panelidan o'chirilsa, bu yerdagi karta ham avtomatik
+   o'chib ketadi (deleteSection ichida bog'langan) */
+function openOylikBolimPicker(){
+  const existingIds=OY.customGoals.map(g=>g._secId).filter(Boolean);
+  const existingNames=OY.customGoals.map(g=>g.name);
+  const available=SECS.filter(s=>!existingIds.includes(s.id)&&!existingNames.includes(s.label));
+  let existingPicker=document.getElementById('oylik-picker-ov');
+  if(existingPicker)existingPicker.remove();
+  const ov=document.createElement('div');
+  ov.id='oylik-picker-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:900;display:flex;align-items:center;justify-content:center';
+  const itemsHtml=available.length
+    ? available.map(s=>`
+        <div onclick="addOylikGoalFromSec('${s.id}')" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);cursor:pointer;transition:all .18s" onmouseover="this.style.background='rgba(26,204,140,.1)';this.style.borderColor='rgba(26,204,140,.3)'" onmouseout="this.style.background='rgba(255,255,255,.03)';this.style.borderColor='rgba(255,255,255,.07)'">
+          <div style="width:12px;height:12px;border-radius:50%;background:${s.color};box-shadow:0 0 8px ${s.color}88;flex-shrink:0"></div>
+          <span style="font-size:14px;font-weight:600;color:var(--text)">${s.label}</span>
+        </div>`).join('')
+    : `<div style="font-size:13px;color:var(--muted);text-align:center;padding:16px">Qo'shiladigan bo'lim qolmadi.<br>Avval "Bo'limlar" panelida yangi bo'lim yarating.</div>`;
+  ov.innerHTML=`
+    <div style="position:absolute;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)" onclick="document.getElementById('oylik-picker-ov').remove()"></div>
+    <div style="position:relative;z-index:1;background:rgba(6,14,10,.97);border:1px solid rgba(26,204,140,.25);border-radius:20px;padding:26px;width:380px;animation:glassOpen .25s ease;box-shadow:0 28px 80px rgba(0,0,0,.7)">
+      <div style="font-size:15px;font-weight:800;margin-bottom:6px;background:linear-gradient(135deg,#e8fff4,#1acc8c);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Oylik maqsad qo'shish</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Mavjud bo'limlardan tanlang</div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">${itemsHtml}</div>
+      <div style="margin-top:14px;text-align:center">
+        <button onclick="document.getElementById('oylik-picker-ov').remove()" style="padding:9px 20px;font-size:12px;color:var(--muted);border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);cursor:pointer">Yopish</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+}
+const OYLIK_GOAL_COLORS=['#7c6af5','#f0a030','#e85555','#e060b0','#3de8cc','#5de89c','#1acc8c'];
+function addOylikGoalFromSec(secId){
+  const sec=SECS.find(s=>s.id===secId);if(!sec)return;
+  if(OY.customGoals.find(g=>g._secId===secId||g.name===sec.label))return;
+  if(!sec.monthlyTarget)sec.monthlyTarget=sec.items.length||10;
+  if(!sec.monthlyCount)sec.monthlyCount=sec.items.filter(x=>x.done).length;
+  OY.customGoals.push({name:sec.label,color:OYLIK_GOAL_COLORS[OY.customGoals.length%OYLIK_GOAL_COLORS.length],_secId:secId});
+  const ov=document.getElementById('oylik-picker-ov');if(ov)ov.remove();
+  renderOylikCards();saveState();
+}
 
 function openHisobotPicker(){
   const existing=HISOB_CATS.map(h=>h.label);
@@ -2586,11 +2645,11 @@ function renderOylikCards(){
 
   // KARTA 1: Ish rejasi — storis + post + custom goals
   const customTotal=OY.customGoals.reduce((s,g)=>{
-    const sec=SECS.find(ss=>ss.label===g.name);
+    const sec=g._secId?SECS.find(ss=>ss.id===g._secId):SECS.find(ss=>ss.label===g.name);
     return s+(sec?.monthlyTarget||0);
   },0);
   const customDone=OY.customGoals.reduce((s,g)=>{
-    const sec=SECS.find(ss=>ss.label===g.name);
+    const sec=g._secId?SECS.find(ss=>ss.id===g._secId):SECS.find(ss=>ss.label===g.name);
     return s+(sec?.monthlyCount||0);
   },0);
   const total1=OY.stories+OY.post+customTotal,done1=OY.stories_done+OY.post_done+customDone;
@@ -2634,7 +2693,7 @@ function renderOylikCards(){
   // CUSTOM GOAL KARTALAR — wizard 6-qadamdan qo'shilganlar
   if(grid&&OY.customGoals.length){
     OY.customGoals.forEach((g,gi)=>{
-      const sec=SECS.find(s=>s.label===g.name);
+      const sec=g._secId?SECS.find(s=>s.id===g._secId):SECS.find(s=>s.label===g.name);
       const cnt=sec?.monthlyCount||0;
       const target=sec?.monthlyTarget||0;
       const pctG=target?Math.round(cnt/target*100):0;
