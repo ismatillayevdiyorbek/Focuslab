@@ -1309,15 +1309,19 @@ button:focus-visible{outline:2px solid rgba(26,204,140,.5);outline-offset:2px}
 
 <!-- HP EVENT CREATION MODAL -->
 <div class="hp-ev-modal" id="hp-ev-modal">
-  <div class="hp-ev-modal-title">Yangi voqea</div>
+  <div class="hp-ev-modal-title" id="hp-ev-modal-title">Yangi voqea</div>
   <input class="hp-ev-inp" id="hp-ev-title" placeholder="Voqea nomi..." onkeydown="if(event.key==='Enter')document.getElementById('hp-ev-inp-ok').click()">
   <div class="hp-ev-time-row">
     <input class="hp-ev-inp" id="hp-ev-start" type="time" value="09:00">
     <input class="hp-ev-inp" id="hp-ev-end" type="time" value="10:00">
   </div>
+  <textarea class="hp-ev-ta" id="hp-ev-note" placeholder="Izoh (ixtiyoriy)..."></textarea>
   <div class="hp-ev-foot">
-    <button class="hp-ev-cancel" onclick="closeHpModal()">Bekor</button>
-    <button class="hp-ev-ok" id="hp-ev-inp-ok" onclick="saveHpEvent()">Saqlash</button>
+    <button class="hp-ev-del" id="hp-ev-del" onclick="deleteHpEventCurrent()">O'chirish</button>
+    <div class="hp-ev-actions">
+      <button class="hp-ev-cancel" onclick="closeHpModal()">Bekor</button>
+      <button class="hp-ev-ok" id="hp-ev-inp-ok" onclick="saveHpEvent()">Saqlash</button>
+    </div>
   </div>
 </div>
 <div class="yo-ov" id="yo-ov" onclick="if(event.target.classList.contains('yobg'))closeYangiOy()">
@@ -2020,7 +2024,7 @@ function renderHisobGrid(isY){
     return;
   }
   grid.innerHTML=HISOB_CATS.map((cat,idx)=>{
-    const p=isY?cat.pct:Math.round(cat.pct*(0.75+Math.random()*0.25));
+    const p=cat.pct;
     const circ=2*Math.PI*26;const dash=(p/100*circ).toFixed(1);
     return `<div class="gm-card" style="position:relative">
       <button onclick="deleteHisobCat(${idx})" title="O'chirish" style="position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;background:rgba(232,85,85,.12);border:1px solid rgba(232,85,85,.2);color:rgba(232,85,85,.6);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:2" onmouseover="this.style.background='rgba(232,85,85,.3)';this.style.color='#fff'" onmouseout="this.style.background='rgba(232,85,85,.12)';this.style.color='rgba(232,85,85,.6)'">✕</button>
@@ -2169,15 +2173,49 @@ function renderCharts(){
 }
 
 function genVals(type){
-  const wk=[65,80,45,90,55,70,30],mo=Array.from({length:31},()=>Math.round(20+Math.random()*80));
-  const done=[3,5,2,7,4,6,2],tot=[5,6,4,9,5,7,3];
-  if(type==='area'||type==='line'||type==='spark')return{headline:Math.round(mo.reduce((a,b)=>a+b)/mo.length)+'%',sub:"Oylik o'rtacha progress",data:mo,labels:['1','8','15','22','29']};
-  if(type==='bar')return{headline:Math.round(wk.reduce((a,b)=>a+b)/wk.length)+'%',sub:'Dushanba → Yakshanba',data:wk,labels:DS};
-  if(type==='multiline')return{headline:done.reduce((a,b)=>a+b)+' ta',sub:'Bajarildi (ikki chiziq)',data:done,data2:tot,labels:DS};
-  if(type==='donut')return{headline:'72%',sub:'Odatlar samaradorligi',data:[72,20,8],labels:["O'rganish",'Vazifalar','Qoldi']};
+  // Haqiqiy oxirgi 7 kun (bugungacha) progress foizlari
+  const todayD=new Date();
+  const wkDays=[];
+  for(let i=6;i>=0;i--){const dd=new Date(todayD);dd.setDate(dd.getDate()-i);wkDays.push(dd);}
+  const wk=wkDays.map(dt=>pct(dt.getFullYear(),dt.getMonth(),dt.getDate()));
+  const wkLabels=wkDays.map(dt=>DS[(dt.getDay()+6)%7]);
+  const doneArr=wkDays.map(dt=>gd(dt.getFullYear(),dt.getMonth(),dt.getDate()).tasks.filter(x=>x.done).length);
+  const totArr=wkDays.map(dt=>gd(dt.getFullYear(),dt.getMonth(),dt.getDate()).tasks.length);
+  // Joriy oyning har kuni uchun progress (faqat bugungacha, kelajak kunlar 0)
+  const y=todayD.getFullYear(),m=todayD.getMonth(),curD=todayD.getDate();
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const mo=[];
+  for(let d=1;d<=daysInMonth;d++)mo.push(d<=curD?pct(y,m,d):0);
+  const moLabels=['1','8','15','22',String(daysInMonth)];
+  if(type==='area'||type==='line'||type==='spark'){
+    const active=mo.slice(0,curD);
+    const avg=active.length?Math.round(active.reduce((a,b)=>a+b,0)/active.length):0;
+    return{headline:avg+'%',sub:"Oylik o'rtacha progress",data:mo,labels:moLabels};
+  }
+  if(type==='bar'){
+    const avg=wk.length?Math.round(wk.reduce((a,b)=>a+b,0)/wk.length):0;
+    return{headline:avg+'%',sub:'Oxirgi 7 kun',data:wk,labels:wkLabels};
+  }
+  if(type==='multiline'){
+    const doneSum=doneArr.reduce((a,b)=>a+b,0);
+    return{headline:doneSum+' ta',sub:'Bajarildi (oxirgi 7 kun)',data:doneArr,data2:totArr,labels:wkLabels};
+  }
+  if(type==='donut'){
+    const sec=SECS.find(s=>s.id==='odatlar')||SECS.find(s=>s.label==='Odatlar');
+    const tot=sec?sec.items.length:0,done=sec?sec.items.filter(x=>x.done).length:0;
+    const p=tot?Math.round(done/tot*100):0;
+    return{headline:p+'%',sub:'Odatlar samaradorligi',data:tot?[p,100-p]:[0,100],labels:['Bajarildi','Qoldi']};
+  }
   if(type==='hbar')return{headline:SECS.length+' bo\'lim',sub:'Har bo\'lim foizi',data:SECS.map(s=>s.items.length?Math.round(s.items.filter(x=>x.done).length/s.items.length*100):0),labels:SECS.map(s=>s.label)};
-  if(type==='waterfall')return{headline:'+42%',sub:'O\'sish dinamikasi',data:[20,-8,15,-5,20],labels:['Bosh','Kamay',"O's",'Kamay','Natija']};
-  return{headline:'—',sub:'Grafik',data:wk,labels:DS};
+  if(type==='waterfall'){
+    const half=Math.floor(wk.length/2)||1;
+    const firstPart=wk.slice(0,half),secondPart=wk.slice(half);
+    const firstAvg=firstPart.length?Math.round(firstPart.reduce((a,b)=>a+b,0)/firstPart.length):0;
+    const secondAvg=secondPart.length?Math.round(secondPart.reduce((a,b)=>a+b,0)/secondPart.length):0;
+    const diff=secondAvg-firstAvg;
+    return{headline:(diff>=0?'+':'')+diff+'%',sub:"O'sish dinamikasi (oxirgi 7 kun)",data:[firstAvg,diff,secondAvg],labels:['Boshida',"O'zgarish",'Hozir']};
+  }
+  return{headline:'0%',sub:'Grafik',data:wk,labels:wkLabels};
 }
 
 function drawChart(svg,type,color,data,labels,data2){
@@ -2253,52 +2291,66 @@ function drawChart(svg,type,color,data,labels,data2){
 }
 
 const EXP_COLORS=['#f0a030','#1acc8c','#3de8cc','#e85555','#7c6af5','#e060b0'];
+function curMonthKey(){const n=new Date();return n.getFullYear()+'-'+n.getMonth();}
+function curMonthExpenses(){const mk=curMonthKey();return DB.expenses.filter(e=>e.monthKey===mk);}
 function addExpense(){
   const cat=document.getElementById('exp-cat').value.trim(),amt=parseFloat(document.getElementById('exp-amt').value)||0;
   if(!cat||!amt)return;
-  const ex=DB.expenses.find(e=>e.cat===cat);
-  if(ex)ex.amt+=amt;else DB.expenses.push({cat,amt,color:EXP_COLORS[DB.expenses.length%EXP_COLORS.length]});
+  const mk=curMonthKey();
+  const ex=DB.expenses.find(e=>e.cat===cat&&e.monthKey===mk);
+  if(ex)ex.amt+=amt;else DB.expenses.push({id:Date.now()+'_'+Math.random().toString(36).slice(2),cat,amt,color:EXP_COLORS[DB.expenses.length%EXP_COLORS.length],monthKey:mk});
   document.getElementById('exp-cat').value='';document.getElementById('exp-amt').value='';
   renderExpenses();
   // Auto-update moliyaviy ahvol karta
   if(OY.set)renderOylikCards();
   saveState();
 }
+function deleteExpense(id){
+  const idx=DB.expenses.findIndex(e=>e.id===id);
+  if(idx===-1)return;
+  DB.expenses.splice(idx,1);
+  renderExpenses();
+  if(OY.set)renderOylikCards();
+  saveState();
+}
 function renderExpenses(){
-  const total=DB.expenses.reduce((a,b)=>a+b.amt,0);
+  const cur=curMonthExpenses();
+  const total=cur.reduce((a,b)=>a+b.amt,0);
   $txt('exp-total',total.toLocaleString()+" so'm");
   const list=document.getElementById('exp-list');
-  list.innerHTML=DB.expenses.map(e=>`<div class="exp-item">
+  list.innerHTML=cur.map(e=>`<div class="exp-item">
     <div class="exp-cat-dot" style="background:${e.color}"></div>
     <span class="exp-cat-name">${e.cat}</span>
     <span class="exp-cat-amt" style="color:${e.color}">${e.amt.toLocaleString()}</span>
+    <span onclick="deleteExpense('${e.id}')" title="O'chirish" style="cursor:pointer;color:rgba(232,85,85,.55);font-size:13px;padding:2px 7px;margin-left:2px;border-radius:6px;transition:all .15s" onmouseover="this.style.background='rgba(232,85,85,.15)';this.style.color='#ff8080'" onmouseout="this.style.background='transparent';this.style.color='rgba(232,85,85,.55)'">✕</span>
   </div>`).join('');
-  if(!DB.expenses.length)list.innerHTML=`<div style="font-size:12px;color:var(--muted2);padding:12px;text-align:center">Xarajat qo'shing</div>`;
+  if(!cur.length)list.innerHTML=`<div style="font-size:12px;color:var(--muted2);padding:12px;text-align:center">Xarajat qo'shing</div>`;
   renderExpenseChart();
 }
 function renderExpenseChart(){
   const svg=document.getElementById('exp-chart');if(!svg)return;
-  if(!DB.expenses.length){
+  const cur=curMonthExpenses();
+  if(!cur.length){
     svg.setAttribute('viewBox','0 0 300 180');
     svg.innerHTML=`<text x="150" y="90" text-anchor="middle" fill="rgba(58,96,80,.4)" font-size="11" font-family="Inter">Xarajat qo'shing</text>`;return;
   }
-  const total=DB.expenses.reduce((a,b)=>a+b.amt,0);
-  const n=DB.expenses.length;
+  const total=cur.reduce((a,b)=>a+b.amt,0);
+  const n=cur.length;
   // Dynamic height: each legend row = 26px, min 180
   const rowH=26;
   const legendH=Math.max(180, n*rowH+20);
   const VW=380, r=60, cx=80, cy=Math.max(90, legendH/2);
   const circ=2*Math.PI*r;
   let offset=0;
-  const segs=DB.expenses.map(e=>{
+  const segs=cur.map(e=>{
     const dash=(e.amt/total*circ).toFixed(1);
     const s=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${e.color}" stroke-width="20" stroke-dasharray="${dash} ${circ.toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/>`;
     offset+=e.amt/total*circ;return s;
   }).join('');
-  const top=DB.expenses.slice().sort((a,b)=>b.amt-a.amt)[0];
+  const top=cur.slice().sort((a,b)=>b.amt-a.amt)[0];
   svg.setAttribute('viewBox',`0 0 ${VW} ${legendH}`);
   svg.style.height=legendH+'px';
-  const legend=DB.expenses.map((e,i)=>{
+  const legend=cur.map((e,i)=>{
     const pct=Math.round(e.amt/total*100);
     const name=e.cat.length>14?e.cat.slice(0,14)+'…':e.cat;
     const y=14+i*rowH;
@@ -2531,7 +2583,7 @@ function renderOylikCards(){
   setArc('ok1-arc',pct1);
 
   // KARTA 2: Moliyaviy holat — xarajatlar DB dan avtomatik
-  const xarajat=DB.expenses.reduce((a,b)=>a+b.amt,0);
+  const xarajat=curMonthExpenses().reduce((a,b)=>a+b.amt,0);
   const qoldi=Math.max(OY.daromad-xarajat,0);
   const pct2=OY.daromad?Math.round(qoldi/OY.daromad*100):0;
   $txt('ok2-pct',pct2+'%');$txt('ok2-badge',pct2+'%');
